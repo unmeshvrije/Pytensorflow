@@ -8,7 +8,7 @@ with tf.device('/gpu:1'):
     a_normed = tf.nn.l2_normalize(a, dim=1)
     b_normed = tf.nn.l2_normalize(b, dim=1)
 
-    c = tf.matmul(a_normed, tf.transpose(b_normed, [1,0]))
+    c = tf.matmul(b_normed, tf.transpose(a_normed, [1,0]))
 
 # Creates a session with log_device_placement set to True.
 # Setting soft_placement to true will allow tensorflow to choose whichever device is available

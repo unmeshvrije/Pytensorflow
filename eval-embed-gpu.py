@@ -7,11 +7,19 @@ import numpy
 import random
 import collections
 import time
+import operator
+from collections import defaultdict as ddict
 import pickle
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import itertools
 import timeit
+import time
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+log = logging.getLogger('EVAL-EMBED')
+evalMethod = "cosine"
 
 def processFile(datafile):
     with open(datafile,'r')as fin:
@@ -33,14 +41,16 @@ def processPickleFile(datafile):
         data = pickle.load(fin)
     return data
 
+if len(sys.argv) < 4:
+    print ("Usage: python %s <embeddings.txt> <kb.bin> <TOPK>" % (sys.arg[0]))
+    sys.exit()
 begin = timeit.default_timer()
 inputEmbeddings = sys.argv[1]  # Embeddings in the python object text format
 kb = sys.argv[2]
-#kb = processPickleFile(sys.argv[2])  # Pickle database
+TOPK = int(sys.argv[3])
 logfile = inputEmbeddings + ".log"
-
-
 flog = open(logfile, 'w')
+
 graph = tf.Graph()
 with graph.as_default():
     with tf.device('/gpu:2'):
@@ -61,46 +71,85 @@ with graph.as_default():
 
     em1 = tf.placeholder(tf.float32, [N, dim])
     em2 = tf.placeholder(tf.float32, [M, dimBatch])
-    # Compute the cosine similarity between minibatch examples and all embeddings.
+    # Compute the cosine similarity between test batch and all embeddings.
     normed_embeddings = tf.nn.l2_normalize(em1, dim=1)
     normed_array = tf.nn.l2_normalize(em2, dim=1)
 
     cosine_similarity = tf.matmul(normed_array, tf.transpose(normed_embeddings, [1,0]))
 
-    closest_words = tf.argmax(cosine_similarity, 1)
+    #closest_words = tf.argmax(cosine_similarity, 1)
     #norm = tf.sqrt(tf.reduce_sum(tf.square(embeddings), 1, keep_dims=True))
 
     init = tf.global_variables_initializer()
 
     with tf.Session(graph=graph) as session:
-        # We must initialize all variables before we use them.
         init.run()
-        print("Initialized")
+        log.info("Initialized\n")
         flog.write("Initialized\n")
         start = time.time()
 
         feed_dict = {em1: em, em2: batch}
-        #l2 = session.run(closest_words, feed_dict=feed_dict)
         cosMat = session.run(cosine_similarity, feed_dict=feed_dict)
 
-        #final_embeddings = normalized_embeddings.eval()
         end = timeit.default_timer()
         print ("Time to train model = %ds" % (end-begin) )
         flog.write ("Time to train model = %ds\n" % (end-begin) )
 
-        data = ""
-        #for i, fe in enumerate(final_embeddings):
-        #    data += str(i) + "," + str(fe) + "\n"
+        #data = ""
+        #data += "L2s:\n"
+        #for cos in cosMat:
+        #    data += str(cos) + "\n"
+        #outFile = inputEmbeddings + "-embeddings.out"
+        #with open(outFile, 'w') as fout:
+        #    fout.write(data)
 
+# Num Rows in cosine matrix must be equal to number of test triples
+if (len(cosMat) != len(test)):
+    print ("FATAL PROBLEM")
+    sys.exit()
 
-        data += "L2s:\n"
-        for cos in cosMat:
-            data += str(cos) + "\n"
-        outFile = inputEmbeddings + "-embeddings.out"
-        with open(outFile, 'w') as fout:
-            fout.write(data)
+log.info("Length check passed %d" % (len(cosMat)))
+flog.write("Length check passed %d" % (len(cosMat)))
+out = []
+for i, triple in enumerate(test):
+    log.info("Tuple(%d) - (%d, %d, %d) : " % (i, triple[0], triple[1], triple[2]))
+    flog.write("Tuple(%d) - (%d, %d, %d) : " % (i, triple[0], triple[1], triple[2]))
+    array = cosMat[i]
+    cos_dict = ddict()
+    for j,a in enumerate(array):
+        cos_dict[j] = a
+    head = triple[0]
+    tail = triple[1]
+    relation = triple[2]
+    sorted_dict = sorted(cos_dict.items(), key = operator.itemgetter(1), reverse=True)
 
-for c in cosMat:
-    array = c
-    sorted_array = sorted(array, reverse=True)
-    print (" %s : %s" % (array, sorted_array))
+    log.info("%d cosine results sorted, " % (len(cos_dict)))
+    flog.write("%d cosine results sorted, " % (len(cos_dict)))
+    found = False
+    for k,v in enumerate(sorted_dict):
+        if k == TOPK:
+            break
+        if v[0] == tail:
+            out.append((head, tail, k))
+            found = True
+            break
+    if k == TOPK:
+        out.append((head, tail, -1))
+    else:
+        if k < TOPK and found == True:
+            del out[-1]
+            out.append((head, tail, -2))
+    log.info("Position found : %d\n" % (k))
+    flog.write("Position found : %d\n" % (k))
+
+outFile = sys.argv[1] + "-" + "TOP-" + str(TOPK) + "-" + evalMethod + ".eval.out"
+data = "{"
+for i, pairs in enumerate(out):
+    data += str(i) + ": {"
+    for p in pairs:
+        data += str(p) + " "
+    data += "}"
+    data += "\n"
+data += "}"
+with open(outFile, 'w') as fout:
+    fout.write(data)
