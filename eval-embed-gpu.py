@@ -135,10 +135,6 @@ for i, triple in enumerate(test):
             break
     if k == TOPK:
         out.append((head, tail, -1))
-    else:
-        if k < TOPK and found == True:
-            del out[-1]
-            out.append((head, tail, -2))
     log.info("Position found : %d\n" % (k))
     flog.write("Position found : %d\n" % (k))
 
