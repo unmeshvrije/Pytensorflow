@@ -61,11 +61,11 @@ flog = open(logfile, 'w')
 dev = args.dev
 filter = args.filter
 
-def num_related_heads(relation, graph):
+def related_heads(relation, graph):
     all_entities_as_head = list(graph['relations_head'][relation].keys())
     return all_entities_as_head
 
-def num_related_tails(relation, graph):
+def related_tails(relation, graph):
     all_entities_as_tail = list(graph['relations_tail'][relation].keys())
     return all_entities_as_tail
 
@@ -172,15 +172,15 @@ if (len(cosMatTailPredictions) != len(test)):
     print ("FATAL PROBLEM")
     sys.exit()
 
-log.info("Length check passed %d" % (len(cosMatTailPredictions)))
-flog.write("Length check passed %d" % (len(cosMatTailPredictions)))
+log.info("Length check passed %d\n" % (len(cosMatTailPredictions)))
+flog.write("Length check passed %d\n" % (len(cosMatTailPredictions)))
 
 def writePredictions(cosMat, test, headPredictions, evalMethod): # pass matrix of tail/head predictions, second parameter is about head-predictions or tail-predictions
     out = []
     ranks = []
     hits = 0
     for i, triple in enumerate(test):
-        #log.info("Tuple(%d) - (%d, %d, %d) : " % (i, triple[0], triple[1], triple[2]))
+        log.info("Tuple(%d) - (%d, %d, %d) : " % (i, triple[0], triple[1], triple[2]))
         #flog.write("Tuple(%d) - (%d, %d, %d) : " % (i, triple[0], triple[1], triple[2]))
         array = cosMat[i]
         head = triple[0]
@@ -189,44 +189,66 @@ def writePredictions(cosMat, test, headPredictions, evalMethod): # pass matrix o
 
         if filter is not None:
             if headPredictions:
-                selectedEntities = num_related_heads(relation, kbGraph)
+                selectedEntities = related_heads(relation, kbGraph)
             else:
-                selectedEntities = num_related_tails(relation, kbGraph)
-            array = [array[i] for i in selectedEntities]
+                selectedEntities = related_tails(relation, kbGraph)
+
+            #Following takes too long for every iteration:
+            #temp = [element for i,element in enumerate(array) if i not in selectedEntities] # This excludes all the foreseen entities.
+            #unForeseenEntities = [i for i,element in enumerate(array) if i not in selectedEntities]
+
+            filteredArray = array
+
+            # Previously considered entities for this relation are set to infinity.
+            #for e in selectedEntities:
+            #    filteredArray[e] = float('inf')
+            # else set the rest of the entities to infinity.
+            #for i, e in enumerate(array):
+            #    if i not in selectedEntities:
+            #        filteredArray[i] = float('inf')
+            #array = filteredArray
+            #log.info("Foreseen entities : %d , unForeseen entities : %d" % (len(selectedEntities), len(unForeseenEntities)))
+            #array = temp
+            #selectedEntities = unForeseenEntities
+            array = [array[i] for i in selectedEntities] # This includes all the foreseen entities during training.
 
         # Here the array is modified and does not contain N elements anymore
         # So array[34] may not be the scores of entity id 34
 
-        #sortid = argsort(array)[::-1] # It gives the indexesof highest to lowest values in array "array"
-        sortid = argsort(array)
+        if evalMethod == "cosine":
+            sortid = argsort(array)[::-1] # It gives the indexesof highest to lowest values in array "array"
+        else:
+            sortid = argsort(array)
+
+        log.info("argsort done")
+
         if headPredictions:
-            if head not in selectedEntities:
-                #
-                rank = N
-            else:
-                if filter:
+            if filter:
+                if head not in selectedEntities:
+                    rank = N
+                else:
                     for i,s in enumerate(sortid):
                         if selectedEntities[s] == head:
                             rank = i + 1
                             break
-                else:
-                    rank = np.where(sortid == head)[0][0] + 1
-        else:
-            if tail not in sortid:
-                rank = N
             else:
-                if filter:
+                rank = np.where(sortid == head)[0][0] + 1
+        else:
+            if filter:
+                if tail not in selectedEntities:
+                    rank = N
+                else:
                     for i,s in enumerate(sortid):
                         if selectedEntities[s] == tail:
                             rank = i + 1
                             break
-                else:
-                    rank = np.where(sortid == tail)[0][0] + 1
+            else:
+                rank = np.where(sortid == tail)[0][0] + 1
+        log.info("Rank : %d\n" % (rank))
         out.append((head, tail, rank))
         ranks.append(rank)
         if (rank < TOPK):
             hits += 1
-        k = rank
 
         # start : result of dictionary based ranks are flawed because python dictionaries are not ordered
        # cos_dict = ddict()
@@ -264,8 +286,8 @@ def writePredictions(cosMat, test, headPredictions, evalMethod): # pass matrix o
     hitRate = float(hits) / float(len(test)) * 100
     meanRank = np.mean(ranks)
 
-    log.info("%s : Hit@%d = %f, Mean Rank = %f" % (prediction, TOPK, hitRate, meanRank))
-    flog.write("%s : Hit@%d = %f, Mean Rank = %f" % (prediction, TOPK, hitRate, meanRank))
+    log.info("%s : Hit@%d = %f, Mean Rank = %f\n" % (prediction, TOPK, hitRate, meanRank))
+    flog.write("%s : Hit@%d = %f, Mean Rank = %f\n" % (prediction, TOPK, hitRate, meanRank))
     outFile = args.fin + "-" + "TOP-" + str(TOPK) + "-" + evalMethod + "-"+ prediction+".eval.out"
     data = "{"
     for i, pairs in enumerate(out):
