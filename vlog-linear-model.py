@@ -28,7 +28,7 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string("model_dir", "", "Base directory for output models.")
-flags.DEFINE_string("model_type", "wide_n_deep",
+flags.DEFINE_string("model_type", "wide",
                     "Valid model types: {'wide', 'deep', 'wide_n_deep'}.")
 flags.DEFINE_integer("train_steps", 200, "Number of training steps.")
 flags.DEFINE_string(
@@ -40,30 +40,30 @@ flags.DEFINE_string(
     "",
     "Path to the test data.")
 
-COLUMNS = ["subjectBound", "objectBound", "numberOfResults", "numberOfRules", "numberOfQueries", "numberOfUniqueRules", "numberOfRows", "algorithm"]
+COLUMNS = ["cost", "estimate", "countRules", "countUniqueRules", "countQueries", "algorithm"]
 LABEL_COLUMN = "label"
 
 # Categorical columns are the ones that have values from the finite set.
-CATEGORICAL_COLUMNS = ["subjectBound", "objectBound", "algorithm"]
+CATEGORICAL_COLUMNS = ["algorithm"]
 
 # Continuous columns are the ones that have any numerical value in continuous range
-CONTINUOUS_COLUMNS = ["numberOfResults", "numberOfRules", "numberOfQueries", "numberOfUniqueRules", "numberOfRows"]
+CONTINUOUS_COLUMNS = ["cost", "estimate", "countRules", "countUniqueRules", "countQueries"]
 
 def build_estimator(model_dir):
   """Build an estimator."""
-  # Sparse base columns.
-  subjectBound = tf.contrib.layers.sparse_column_with_keys(column_name="subjectBound",
-                                                     keys=["0", "1"])
-  objectBound = tf.contrib.layers.sparse_column_with_keys(column_name="objectBound",
-                                                     keys=["0", "1"])
   #isClass = tf.contrib.layers.sparse_column_with_keys(column_name="isClass",
   #                                                   keys=["0", "1"])
 
   # Continuous base columns.
-  numberOfRows = tf.contrib.layers.real_valued_column("numberOfRows")
+  cost = tf.contrib.layers.real_valued_column("cost")
+  estimate = tf.contrib.layers.real_valued_column("estimate")
+  countRules = tf.contrib.layers.real_valued_column("countRules")
+  countUniqueRules = tf.contrib.layers.real_valued_column("countUniqueRules")
+  countQueries = tf.contrib.layers.real_valued_column("countQueries")
 
   # Wide columns and deep columns.
-  wide_columns = [subjectBound, objectBound, isClass, numberOfRows]
+  wide_columns = [cost, estimate, countRules, countUniqueRules, countQueries ]
+  deep_columns = [cost, estimate, countRules, countUniqueRules, countQueries ]
 
   if FLAGS.model_type == "wide":
     m = tf.contrib.learn.LinearClassifier(model_dir=model_dir,
